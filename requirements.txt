@@ -1,0 +1,10 @@
+# Core training / evaluation stack
+torch>=2.2.0
+torchvision>=0.17.0
+numpy>=1.24.0
+scikit-learn>=1.3.0
+Pillow>=10.0.0
+
+# Optional: ONNX export. benchmark.py writes TorchScript regardless and only
+# produces an .onnx file when this is installed.
+# onnx>=1.15.0

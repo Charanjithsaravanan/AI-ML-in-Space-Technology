@@ -1,0 +1,15 @@
+{
+  "parameters": 49434,
+  "parameter_mb_fp32": 0.18857574462890625,
+  "torchscript_mb": 0.2527904510498047,
+  "onnx_mb": null,
+  "latency": {
+    "median_ms": 0.8505500009050593,
+    "mean_ms": 0.8247855001172866,
+    "p95_ms": 0.928860002750298,
+    "min_ms": 0.5893000015930738,
+    "repeats": 200,
+    "warmup": 50,
+    "threads": 1
+  }
+}
