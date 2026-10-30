@@ -1,10 +1,10 @@
-# TinySat — a 0.19 MB EuroSAT classifier that survives sensor noise
+# GEOSAT — a 0.19 MB EuroSAT classifier that survives sensor noise
 
-A compact depthwise-separable CNN for 64x64 RGB satellite tiles, trained on the
-fixed 2,000-patch EuroSAT subset, exported as TorchScript with its normalisation
+A compact depthwise-separable GEOSAT CNN for 64x64 RGB satellite tiles, trained
+on a reproducible EuroSAT split, exported as TorchScript with its normalisation
 folded in, and measured on the three axes that actually decide whether it flies:
 
-**macro F1 · file size in MB · CPU latency in ms per patch.**
+**macro F1 · file size in MB · selected-device latency in ms per patch.**
 
 ---
 
@@ -14,13 +14,14 @@ folded in, and measured on the three axes that actually decide whether it flies:
 |---|---|
 | `data.py` | EuroSAT download, the fixed subset and split, training augmentation |
 | `noise.py` | `inject_sensor_noise(images, mode, severity)` + noise-level estimation |
-| `model.py` | depthwise-separable CNN, plus the normalised export wrapper |
-| `train.py` | AdamW + cosine schedule, noise augmentation, best checkpoint on validation |
+| `model.py` | GEOSAT depthwise-separable CNN, plus the normalised export wrapper |
+| `train.py` | AdamW + cosine schedule, noise augmentation, robust checkpoint selection |
 | `evaluate.py` | macro F1 on the 400 held-out patches, clean and under every noise condition |
 | `benchmark.py` | TorchScript export, on-disk size, single-thread latency, trade-off table |
 | `infer.py` | one 64x64 patch in, class + cloud flag + corruption flag + latency out |
 | `cloud.py` | cloud/clean screening head (and the documented EuroSAT substitution) |
 | `utils.py` | seeds, class list, parameter accounting, JSON IO |
+| `frontend/` | isolated read-only Next.js dashboard for saved results |
 
 Data loading, model, training, noise, evaluation, benchmarking and inference are
 separate modules on purpose: each one is runnable, and each one is the single
@@ -36,9 +37,11 @@ source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-CPU-only is the supported configuration. A 1,600-patch run at 30 epochs finishes
-in a few minutes on a laptop; a GPU is used automatically if one is present but
-is not required. Python 3.10+.
+CPU remains supported, while training, evaluation, and inference automatically
+use CUDA when it is available. The default 1,600-patch run at 30 epochs finishes
+in a few minutes on a laptop, while `--full` trains on all ~27,000 EuroSAT
+patches for maximum accuracy.
+Python 3.10+.
 
 The first run downloads EuroSAT RGB (~90 MB) into `./data` through torchvision.
 That download goes through an unverified SSL context — it is left exactly as
@@ -49,9 +52,10 @@ specified in `data.py`, do not replace it.
 ## 3. Reproduce every number
 
 ```bash
-python train.py --epochs 30                     # -> runs/best.pt, runs/best_torchscript.pt
+python train.py --epochs 30                     # fixed 1,600-patch split
+python train.py --epochs 40 --full              # all ~27,000 patches
 python evaluate.py --checkpoint runs/best.pt    # -> results/robustness.json, results/robustness.md
-python benchmark.py --checkpoint runs/best.pt   # -> results/benchmark.json, results/tradeoff.md
+python benchmark.py --checkpoint runs/best.pt   # compares CPU/GPU and selects the faster device
 python cloud.py                                 # -> runs/cloud_screener.joblib (optional)
 python infer.py --image samples/tile.png        # class + flags + latency for one patch
 ```
@@ -75,6 +79,13 @@ Batch size 32, shuffled for training only. A further 200 patches are carved out
 of the 1,600 training patches (seed 43) and used **only** to pick the best
 checkpoint. The 400 test patches are never seen during training or selection.
 
+By default, GEOSAT selects a checkpoint using the mean macro F1 across four
+validation views: clean, Gaussian noise at severity 0.15, salt-and-pepper noise
+at 0.30, and band dropout at 0.30. This keeps checkpoint selection aligned with
+the robustness conditions reported by `evaluate.py`, rather than optimising
+clean patches alone. The `--full` mode uses the complete EuroSAT dataset and
+holds out `--val-size` patches for the same selection procedure.
+
 ---
 
 ## 4. Results
@@ -87,7 +98,27 @@ The three required axes, together, because they trade off against each other:
 | macro F1, worst noise (0.30) | _fill from your run_ | `python evaluate.py` |
 | parameters | 49,434 | architecture arithmetic |
 | exported size (TorchScript, fp32) | 0.19 MiB | `python benchmark.py` |
-| median CPU latency, 1 thread, batch 1 | _fill from your run_ | `python benchmark.py` |
+| median selected-device latency, batch 1 | _fill from your run_ | `python benchmark.py` |
+
+`benchmark.py` uses `--device auto` by default: it measures both CPU and CUDA
+when CUDA is available, then records the lower-latency result as the selected
+device. A hybrid CPU/GPU path is not used for one 64x64 patch because copying
+each patch between devices usually costs more than this small model's inference.
+Use `--device cuda` or `--device cpu` to force one side.
+
+### Hybrid CPU/GPU mode
+
+The project supports **hybrid selection**, meaning it benchmarks both devices
+and chooses the faster complete execution path. It does not split one inference
+between CPU and GPU: the model and its input stay on one device for the entire
+forward pass. Splitting a single 64x64 patch would add PCIe/system-memory
+transfer and synchronization overhead, which is usually slower than running this
+small model entirely on either CPU or GPU.
+
+For larger batches or multiple concurrent workloads, a practical hybrid
+deployment can keep preprocessing and data loading on the CPU while batching
+model inference on the GPU. Use `--device auto` to select the faster inference
+device, or force a path with `--device cuda` / `--device cpu`.
 
 The parameter count is fixed by the architecture: 49,434 trainable parameters =
 197,736 B in fp32 = 0.189 MiB, i.e. **3.8% of the 5 MB budget**. The exported
@@ -193,7 +224,53 @@ no other code changes.
 
 ---
 
-## 8. Inference
+## 8. Read-only frontend
+
+The optional `frontend/` app is isolated from the Python program. It retrieves
+the saved benchmark, robustness, and cloud-screener JSON outputs and never
+imports, retrains, or modifies the model. the dashboard includes model metrics, CPU/CUDA latency comparison, robustness
+charts, cloud-signal provenance, and an interactive GradientASCII WebGL
+background. Dashboard cards and analysis results use the GlassSurface
+refraction effect, with CSS fallback for browsers without the required graphics
+features. These visual effects run only in the browser and do not access the
+Python model or data pipeline.
+
+```bash
+cd frontend
+npm install
+npm run sync-data
+npm run dev
+```
+
+Run `npm run sync-data` again after running the Python scripts to refresh the
+dashboard snapshots. The `auto` benchmark mode chooses the faster complete
+device path; the frontend only displays that result and does not make device
+decisions or run inference. For a public deployment, run `npm run build` and
+`npm run start` in `frontend/`, or deploy the standalone Next.js app to a
+Node-compatible host. Only the copied JSON snapshots in `frontend/public/data`
+are exposed to the browser.
+
+### Live image analysis
+
+The optional read-only API exposes the backend's scientific outputs without
+changing training or checkpoints: top-5 land-cover probabilities, cloud score,
+sensor-corruption diagnostics, synthetic noise stress tests, and an
+occlusion-based importance heatmap. Uploads are processed in memory and are not
+stored by the API.
+
+```bash
+pip install -r api/requirements.txt
+uvicorn api.app:app --host 0.0.0.0 --port 8000
+```
+
+Set `frontend/.env.local` from `frontend/.env.example` to the public API URL
+before building the frontend. For a public API, restrict
+`GEOSAT_ALLOWED_ORIGINS`, enforce HTTPS, authentication/rate limits, and an
+upstream request-size limit at the hosting layer.
+
+---
+
+## 9. Inference
 
 ```bash
 python infer.py --image samples/tile.png
@@ -205,7 +282,7 @@ prediction   SeaLake  (p=0.9812)
 top-3        SeaLake 0.981, River 0.011, PermanentCrop 0.003
 cloud flag   CLEAR  (p_cloud 0.074)
 sensor flag  CLEAN  (sigma 0.0031, dropout 0.000, saturated 0.000)
-latency      1.84 ms/patch median (p95 2.07 ms, CPU, batch 1)
+latency      1.84 ms/patch median (p95 2.07 ms, CUDA, batch 1)
 ```
 
 Latency is measured on the same call you just made — warm-up runs are discarded
@@ -215,7 +292,7 @@ format only; your own run prints your own numbers.
 
 ---
 
-## 9. Notes on the budget
+## 10. Notes on the budget
 
 The 5 MB ceiling is not the binding constraint here — 0.19 MB is 26x under it.
 The real constraint on a CubeSat is energy per inference and thermal headroom, so
@@ -233,15 +310,15 @@ in flash:
 
 ---
 
-## 10. Limitations
+## 11. Limitations
 
 * EuroSAT is 64x64, 10 m GSD, 13-band source imagery reduced to RGB; a real
   downlink may have different radiometry and this normalisation would need
   re-fitting per sensor.
 * The cloudy class is synthetic by default (see section 7). Treat the screener's
   accuracy as an upper bound until it has been trained on real cloud masks.
-* Latency measured on a laptop CPU is a floor, not a flight figure: a rad-tolerant
-  processor will be slower, and the ratio between classes stays useful while the
-  absolute number does not.
+* Benchmarking measures CPU and CUDA when available and selects the faster device;
+  a rad-tolerant flight processor will still be slower, and the absolute number
+  will differ from this laptop measurement.
 * Only 1,600 training patches — enough to compare recipes, not enough to claim a
   state-of-the-art classifier.
