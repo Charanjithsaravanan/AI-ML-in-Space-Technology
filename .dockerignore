@@ -1,0 +1,11 @@
+.git
+.gitignore
+.venv
+.venv-win
+__pycache__
+*.py[cod]
+frontend/node_modules
+frontend/.next
+data
+results
+runs/history.json

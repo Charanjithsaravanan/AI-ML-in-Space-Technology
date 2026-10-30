@@ -31,6 +31,48 @@ place to change if that axis of the problem changes.
 
 ## 2. Setup
 
+### Fresh Windows installation
+
+Install these free prerequisites:
+
+* [Git for Windows](https://git-scm.com/download/win)
+* [Python 3.11](https://www.python.org/downloads/windows/) (enable **Add Python to PATH**)
+* [Node.js LTS](https://nodejs.org/) (npm is included)
+
+Open PowerShell and verify them:
+
+```powershell
+git --version
+python --version
+npm --version
+```
+
+Clone the repository and enter it:
+
+```powershell
+git clone https://github.com/Charanjithsaravanan/AI-ML-in-Space-Technology.git
+cd AI-ML-in-Space-Technology
+```
+
+Then run the Windows installer and launcher:
+
+```powershell
+.\setup_geosat.ps1
+.\run_geosat.ps1
+```
+
+The setup creates an isolated `.venv`, installs the Python/API packages, and
+runs `npm install` in `frontend/`. It does not retrain the model or download
+cloud services. The repository includes the trained checkpoint and screener.
+
+If PowerShell blocks scripts, allow locally created scripts for your user:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+You can also double-click `setup_geosat.bat` once and then `run_geosat.bat`.
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
@@ -46,6 +88,44 @@ Python 3.10+.
 The first run downloads EuroSAT RGB (~90 MB) into `./data` through torchvision.
 That download goes through an unverified SSL context — it is left exactly as
 specified in `data.py`, do not replace it.
+
+### Run the complete app locally (Windows)
+
+The repository includes the trained GEOSAT checkpoint, a FastAPI analysis
+backend, and a Next.js dashboard. No subscription or cloud account is required.
+From PowerShell at the repository root, after cloning and installing the
+prerequisites above:
+
+```powershell
+.\setup_geosat.ps1
+.\run_geosat.ps1
+```
+
+The setup step creates `.venv`, installs the Python and API dependencies, and
+installs the frontend dependencies. The launcher starts the API on
+`http://127.0.0.1:8000`, checks `/health`, starts the dashboard on
+`http://localhost:3000`, and opens it in your browser. Upload analysis is
+processed locally using `runs/best.pt` and `runs/cloud_screener.joblib`; files
+are not sent to a third-party service. Press `Ctrl+C` in the launcher window to
+stop the dashboard and API.
+
+This app is intended for local analysis and decision support. Its reliability
+metrics are documented in the dashboard, but synthetic-noise testing and a
+fixed holdout set are not sufficient evidence for safety-critical autonomous
+operation.
+
+### Optional Docker installation
+
+If Docker Desktop is already installed, the complete GEOSAT app can run in one
+container without installing Python or Node.js on the host:
+
+```powershell
+docker compose up --build
+```
+
+Open `http://localhost:8000`. Stop it with `Ctrl+C`, or use
+`docker compose down`. Docker Desktop is free for personal use and includes
+Docker Compose; its licensing should be checked for commercial organisations.
 
 ---
 

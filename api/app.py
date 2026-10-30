@@ -11,6 +11,7 @@ import numpy as np
 import torch
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from PIL import Image, UnidentifiedImageError
 
 from model import GEOSATCNN, NormalizedModel
@@ -145,3 +146,8 @@ async def analyze(file: UploadFile = File(...)) -> dict[str, Any]:
         "robustness": robustness(patch),
         "heatmap": occlusion_heatmap(patch, target_index),
     }
+
+
+FRONTEND = ROOT / "frontend" / "out"
+if FRONTEND.exists():
+    app.mount("/", StaticFiles(directory=FRONTEND, html=True), name="frontend")

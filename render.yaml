@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: geosat
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: GEOSAT_ALLOWED_ORIGINS
+        value: ""

@@ -13,7 +13,7 @@ type Analysis = {
   heatmap: number[][];
 };
 
-const API_URL = process.env.NEXT_PUBLIC_GEOSAT_API_URL ?? "http://localhost:8000";
+const API_URL = process.env.NEXT_PUBLIC_GEOSAT_API_URL ?? "";
 const percent = (value: number) => `${(value * 100).toFixed(1)}%`;
 
 function Heatmap({ values }: { values: number[][] }) {

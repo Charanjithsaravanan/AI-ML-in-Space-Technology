@@ -1,0 +1,9 @@
+services:
+  geosat:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      PORT: "8000"
+      GEOSAT_ALLOWED_ORIGINS: ""
+    restart: unless-stopped
