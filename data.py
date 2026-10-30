@@ -49,16 +49,34 @@ def build_full_dataset(root: str = "./data") -> EuroSAT:
     return EuroSAT(root=root, download=True, transform=transforms.ToTensor())
 
 
-def build_splits(root: str = "./data", val_size: int = VAL_SIZE, seed: int = SEED) -> Splits:
+def build_splits(
+    root: str = "./data",
+    val_size: int = VAL_SIZE,
+    seed: int = SEED,
+    full: bool = False,
+) -> Splits:
     """2,000 fixed patches -> 1,600 train / 400 test, then 200 of the train set held out.
 
     The validation carve uses seed + 1, so it can never collide with the
     permutation that produced the subset itself.
     """
     torch.manual_seed(seed)
-    full = build_full_dataset(root)
-    perm = torch.randperm(len(full))[:SUBSET_SIZE]
-    subset = Subset(full, perm.tolist())
+    full_dataset = build_full_dataset(root)
+    if full:
+        train, val = random_split(
+            full_dataset,
+            [len(full_dataset) - val_size, val_size],
+            generator=torch.Generator().manual_seed(seed + 1),
+        )
+        return Splits(
+            train=train,
+            val=val,
+            test=Subset(full_dataset, []),
+            classes=list(full_dataset.classes),
+        )
+
+    perm = torch.randperm(len(full_dataset))[:SUBSET_SIZE]
+    subset = Subset(full_dataset, perm.tolist())
 
     train_pool, test = random_split(
         subset, [N_TRAIN, N_TEST], generator=torch.Generator().manual_seed(seed)
@@ -69,7 +87,7 @@ def build_splits(root: str = "./data", val_size: int = VAL_SIZE, seed: int = SEE
         generator=torch.Generator().manual_seed(seed + 1),
     )
 
-    classes = list(full.classes)
+    classes = list(full_dataset.classes)
     assert len(classes) == NUM_CLASSES, "expected " + str(NUM_CLASSES) + " classes, got " + str(len(classes))
     return Splits(train=train, val=val, test=test, classes=classes)
 

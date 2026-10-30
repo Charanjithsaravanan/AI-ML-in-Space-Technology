@@ -2,28 +2,28 @@
 
 | condition | macro F1 | accuracy | delta vs clean |
 |---|---|---|---|
-| clean | 0.8097 | 0.8225 | — |
-| gaussian @ 0.05 | 0.7224 | 0.7275 | -0.0873 |
-| gaussian @ 0.15 | 0.6726 | 0.6850 | -0.1371 |
-| gaussian @ 0.30 | 0.5923 | 0.6075 | -0.2175 |
-| salt_pepper @ 0.05 | 0.6884 | 0.7050 | -0.1213 |
-| salt_pepper @ 0.15 | 0.6407 | 0.6575 | -0.1691 |
-| salt_pepper @ 0.30 | 0.5807 | 0.5900 | -0.2290 |
-| band_dropout @ 0.05 | 0.8068 | 0.8200 | -0.0030 |
-| band_dropout @ 0.15 | 0.7893 | 0.8000 | -0.0205 |
-| band_dropout @ 0.30 | 0.7365 | 0.7575 | -0.0732 |
+| clean | 0.9608 | 0.9625 | — |
+| gaussian @ 0.05 | 0.8874 | 0.8950 | -0.0733 |
+| gaussian @ 0.15 | 0.8242 | 0.8325 | -0.1366 |
+| gaussian @ 0.30 | 0.7438 | 0.7500 | -0.2169 |
+| salt_pepper @ 0.05 | 0.8692 | 0.8700 | -0.0915 |
+| salt_pepper @ 0.15 | 0.7973 | 0.8050 | -0.1635 |
+| salt_pepper @ 0.30 | 0.7359 | 0.7350 | -0.2249 |
+| band_dropout @ 0.05 | 0.9653 | 0.9675 | +0.0046 |
+| band_dropout @ 0.15 | 0.9502 | 0.9525 | -0.0105 |
+| band_dropout @ 0.30 | 0.9158 | 0.9225 | -0.0449 |
 
 ### Per-class F1 (clean vs worst condition: salt_pepper @ 0.30)
 
 | class | clean F1 | worst-case F1 |
 |---|---|---|
-| AnnualCrop | 0.8861 | 0.6197 |
-| Forest | 0.9216 | 0.6829 |
-| HerbaceousVegetation | 0.7010 | 0.5600 |
-| Highway | 0.6176 | 0.2456 |
-| Industrial | 0.9610 | 0.9459 |
-| Pasture | 0.7368 | 0.5091 |
-| PermanentCrop | 0.6575 | 0.5116 |
-| Residential | 0.8861 | 0.6061 |
-| River | 0.7667 | 0.4524 |
-| SeaLake | 0.9630 | 0.6739 |
+| AnnualCrop | 0.9487 | 0.7761 |
+| Forest | 0.9899 | 0.8182 |
+| HerbaceousVegetation | 0.9400 | 0.5794 |
+| Highway | 0.9639 | 0.6462 |
+| Industrial | 0.9867 | 0.9444 |
+| Pasture | 0.9630 | 0.7451 |
+| PermanentCrop | 0.8857 | 0.5476 |
+| Residential | 1.0000 | 0.7765 |
+| River | 0.9492 | 0.7018 |
+| SeaLake | 0.9808 | 0.8235 |

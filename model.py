@@ -37,7 +37,7 @@ class DepthwiseSeparableBlock(nn.Module):
         return self.act(self.bn2(self.pointwise(x)))
 
 
-class TinySatCNN(nn.Module):
+class GEOSATCNN(nn.Module):
     """Input is normalised pixels; see NormalizedModel for the raw-[0,1] wrapper."""
 
     def __init__(self, num_classes: int = 10, width: float = 1.0, dropout: float = 0.1, in_ch: int = 3):
@@ -83,5 +83,5 @@ class NormalizedModel(nn.Module):
         return self.model((x - self.mean) / self.std)
 
 
-def build_model(num_classes: int = 10, width: float = 1.0) -> TinySatCNN:
-    return TinySatCNN(num_classes=num_classes, width=width)
+def build_model(num_classes: int = 10, width: float = 1.0) -> GEOSATCNN:
+    return GEOSATCNN(num_classes=num_classes, width=width)

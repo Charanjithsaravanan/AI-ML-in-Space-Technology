@@ -1,15 +1,38 @@
 {
   "parameters": 49434,
   "parameter_mb_fp32": 0.18857574462890625,
-  "torchscript_mb": 0.2527904510498047,
-  "onnx_mb": null,
+  "torchscript_mb": 0.2527294158935547,
+  "onnx_mb": 0.19333267211914062,
   "latency": {
-    "median_ms": 0.8505500009050593,
-    "mean_ms": 0.8247855001172866,
-    "p95_ms": 0.928860002750298,
-    "min_ms": 0.5893000015930738,
+    "median_ms": 0.7805499999449239,
+    "mean_ms": 0.7985124999413529,
+    "p95_ms": 0.9069899997939497,
+    "min_ms": 0.7088000002113404,
     "repeats": 200,
     "warmup": 50,
-    "threads": 1
+    "threads": 1,
+    "device": "cuda"
+  },
+  "latency_by_device": {
+    "cpu": {
+      "median_ms": 0.8537500002603338,
+      "mean_ms": 0.8602260000316164,
+      "p95_ms": 0.9680600002866413,
+      "min_ms": 0.7564999996247934,
+      "repeats": 200,
+      "warmup": 50,
+      "threads": 1,
+      "device": "cpu"
+    },
+    "cuda": {
+      "median_ms": 0.7805499999449239,
+      "mean_ms": 0.7985124999413529,
+      "p95_ms": 0.9069899997939497,
+      "min_ms": 0.7088000002113404,
+      "repeats": 200,
+      "warmup": 50,
+      "threads": 1,
+      "device": "cuda"
+    }
   }
 }

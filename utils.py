@@ -37,7 +37,7 @@ def seed_everything(seed: int = SEED) -> None:
     """Make a run reproducible across python, numpy and torch RNGs.
 
     cuDNN is pinned to deterministic kernels so a GPU run matches a CPU run's
-    ordering. Training itself targets CPU, so this mostly matters for the split.
+    ordering.     This keeps CPU and GPU runs reproducible where deterministic kernels exist.
     """
     os.environ["PYTHONHASHSEED"] = str(seed)
     random.seed(seed)
@@ -49,7 +49,7 @@ def seed_everything(seed: int = SEED) -> None:
 
 
 def get_device() -> torch.device:
-    """CPU by default; a GPU is used only if one happens to be present."""
+    """Prefer CUDA for model execution, with a CPU fallback when unavailable."""
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 

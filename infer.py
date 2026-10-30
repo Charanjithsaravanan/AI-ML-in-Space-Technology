@@ -18,8 +18,9 @@ from PIL import Image
 from torchvision import transforms
 
 import cloud
-from model import NormalizedModel, TinySatCNN
+from model import GEOSATCNN, NormalizedModel
 from noise import detect_corruption
+from utils import get_device
 
 
 def load_patch(path: str) -> torch.Tensor:
@@ -30,14 +31,20 @@ def load_patch(path: str) -> torch.Tensor:
     return transforms.ToTensor()(image).unsqueeze(0)
 
 
-def measure_infer_latency(model, patch: torch.Tensor, repeats: int = 100, warmup: int = 20) -> dict:
+def measure_infer_latency(
+    model, patch: torch.Tensor, device: torch.device, repeats: int = 100, warmup: int = 20
+) -> dict:
+    synchronize = lambda: torch.cuda.synchronize(device) if device.type == "cuda" else None
     with torch.no_grad():
         for _ in range(warmup):
             model(patch)
+        synchronize()
         samples = []
         for _ in range(repeats):
+            synchronize()
             started = time.perf_counter()
             model(patch)
+            synchronize()
             samples.append((time.perf_counter() - started) * 1000.0)
     samples = np.asarray(samples)
     return {"median_ms": float(np.median(samples)), "p95_ms": float(np.percentile(samples, 95))}
@@ -52,21 +59,24 @@ def main() -> None:
     parser.add_argument("--screener", type=str, default="runs/cloud_screener.joblib")
     args = parser.parse_args()
 
+    device = get_device()
+    print("device=" + str(device))
     checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
     classes = checkpoint["classes"]
 
     if args.scripted:
-        model = torch.jit.load("runs/best_torchscript.pt", map_location="cpu").eval()
+        model = torch.jit.load("runs/best_torchscript.pt", map_location=device).eval()
     else:
-        raw = TinySatCNN(num_classes=len(classes))
+        raw = GEOSATCNN(num_classes=len(classes))
         raw.load_state_dict(checkpoint["state_dict"])
         raw.eval()
-        model = NormalizedModel(raw, checkpoint["mean"], checkpoint["std"]).eval()
+        model = NormalizedModel(raw, checkpoint["mean"], checkpoint["std"]).to(device).eval()
 
     patch = load_patch(args.image)
+    model_patch = patch.to(device)
 
     with torch.no_grad():
-        probabilities = model(patch).softmax(dim=1)[0]
+        probabilities = model(model_patch).softmax(dim=1)[0]
 
     confidence, index = probabilities.max(dim=0)
     label = classes[int(index)]
@@ -83,7 +93,7 @@ def main() -> None:
             + "  (heuristic brightness " + format(brightness, ".3f") + " - run cloud.py to train the screener)"
         )
 
-    latency = measure_infer_latency(model, patch)
+    latency = measure_infer_latency(model, model_patch, device)
 
     top3 = ", ".join(
         classes[int(i)] + " " + format(float(probabilities[int(i)]), ".3f")
@@ -106,7 +116,8 @@ def main() -> None:
     )
     print(
         "latency      " + format(latency["median_ms"], ".3f") + " ms/patch median"
-        + " (p95 " + format(latency["p95_ms"], ".3f") + " ms, CPU, batch 1)"
+        + " (p95 " + format(latency["p95_ms"], ".3f") + " ms, "
+        + str(device).upper() + ", batch 1)"
     )
 
 

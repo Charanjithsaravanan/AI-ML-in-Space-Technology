@@ -18,14 +18,14 @@ import torch
 from sklearn.metrics import f1_score
 
 from data import build_splits, make_loader
-from model import NormalizedModel, TinySatCNN
+from model import GEOSATCNN, NormalizedModel
 from noise import inject_sensor_noise
-from utils import CLASSES, NOISE_MODES, SEVERITIES, save_json
+from utils import CLASSES, NOISE_MODES, SEVERITIES, get_device, save_json
 
 
 def load_model(checkpoint_path: str, device: torch.device) -> NormalizedModel:
     checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
-    model = TinySatCNN(num_classes=len(checkpoint.get("classes", CLASSES)))
+    model = GEOSATCNN(num_classes=len(checkpoint.get("classes", CLASSES)))
     model.load_state_dict(checkpoint["state_dict"])
     model.eval()
     return NormalizedModel(model, checkpoint["mean"], checkpoint["std"]).to(device).eval()
@@ -64,7 +64,8 @@ def main() -> None:
     parser.add_argument("--out-dir", type=str, default="results")
     args = parser.parse_args()
 
-    device = torch.device("cpu")
+    device = get_device()
+    print("device=" + str(device))
     splits = build_splits(root=args.data_root)
     loader = make_loader(splits.test, args.batch_size)
     model = load_model(args.checkpoint, device)

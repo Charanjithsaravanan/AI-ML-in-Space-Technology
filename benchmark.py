@@ -1,11 +1,11 @@
-"""Export, size and CPU latency - the third axis of the trade-off.
+"""Export, size and device latency - the third axis of the trade-off.
 
-    python benchmark.py --checkpoint runs/best.pt
+    python benchmark.py --checkpoint runs/best.pt --device auto
 
 Measures:
     * parameter count and file size of the exported TorchScript graph (a real
       file on disk, not an estimate)
-    * median / p95 per-patch latency, single thread, batch 1, after warm-up
+    * median / p95 per-patch latency, batch 1, after warm-up
 
 Then merges with results/robustness.json, when present, to print the trade-off.
 """
@@ -18,7 +18,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from model import NormalizedModel, TinySatCNN
+from model import GEOSATCNN, NormalizedModel
 from utils import CLASSES, count_parameters, human_mb, load_json, parameters_to_mb, save_json
 
 
@@ -51,23 +51,29 @@ def export_onnx(model: NormalizedModel, out_path: Path):
     return out_path
 
 
-def measure_latency(model, repeats: int = 200, warmup: int = 50, threads: int = 1) -> dict:
-    """Median per-patch wall time on CPU, batch 1, single thread.
+def measure_latency(
+    model, device: torch.device, repeats: int = 200, warmup: int = 50, threads: int = 1
+) -> dict:
+    """Measure synchronized batch-1 latency on one execution device."""
+    if device.type == "cpu":
+        torch.set_num_threads(threads)
+    model = model.to(device).eval()
+    example = torch.rand(1, 3, 64, 64, device=device)
 
-    Single thread and batch 1 are the honest numbers for a flight processor:
-    there is no batch to amortise and no SIMD-heavy host to hide behind.
-    """
-    torch.set_num_threads(threads)
-    model.eval()
-    example = torch.rand(1, 3, 64, 64)
+    def synchronize() -> None:
+        if device.type == "cuda":
+            torch.cuda.synchronize(device)
 
     with torch.no_grad():
         for _ in range(warmup):
             model(example)
+        synchronize()
         samples = []
         for _ in range(repeats):
+            synchronize()
             started = time.perf_counter()
             model(example)
+            synchronize()
             samples.append((time.perf_counter() - started) * 1000.0)
 
     samples = np.asarray(samples)
@@ -79,6 +85,7 @@ def measure_latency(model, repeats: int = 200, warmup: int = 50, threads: int = 
         "repeats": repeats,
         "warmup": warmup,
         "threads": threads,
+        "device": str(device),
     }
 
 
@@ -88,11 +95,17 @@ def main() -> None:
     parser.add_argument("--repeats", type=int, default=200)
     parser.add_argument("--warmup", type=int, default=50)
     parser.add_argument("--threads", type=int, default=1)
+    parser.add_argument(
+        "--device",
+        choices=("auto", "cuda", "cpu"),
+        default="auto",
+        help="benchmark GPU when available; auto compares CPU and GPU and keeps the faster result",
+    )
     parser.add_argument("--out-dir", type=str, default="results")
     args = parser.parse_args()
 
     checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
-    model = TinySatCNN(num_classes=len(checkpoint.get("classes", CLASSES)))
+    model = GEOSATCNN(num_classes=len(checkpoint.get("classes", CLASSES)))
     model.load_state_dict(checkpoint["state_dict"])
     wrapped = NormalizedModel(model, checkpoint["mean"], checkpoint["std"]).eval()
 
@@ -101,12 +114,26 @@ def main() -> None:
     onnx_path = export_onnx(wrapped, Path("runs/model.onnx"))
 
     ts_mb = human_mb(ts_path.stat().st_size)
+    if args.device == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("CUDA was requested but is not available in this PyTorch environment")
+    devices = (
+        [torch.device("cpu"), torch.device("cuda")]
+        if args.device == "auto" and torch.cuda.is_available()
+        else [torch.device("cuda" if args.device == "cuda" else "cpu")]
+    )
+    latency_by_device = {
+        str(device): measure_latency(wrapped, device, args.repeats, args.warmup, args.threads)
+        for device in devices
+    }
+    latency = min(latency_by_device.values(), key=lambda result: result["median_ms"])
+
     report = {
         "parameters": n_params,
         "parameter_mb_fp32": parameters_to_mb(n_params),
         "torchscript_mb": ts_mb,
         "onnx_mb": human_mb(onnx_path.stat().st_size) if onnx_path else None,
-        "latency": measure_latency(wrapped, args.repeats, args.warmup, args.threads),
+        "latency": latency,
+        "latency_by_device": latency_by_device,
     }
     save_json(Path(args.out_dir) / "benchmark.json", report)
 
@@ -115,11 +142,14 @@ def main() -> None:
     print("torchscript file  " + format(ts_mb, ".4f") + " MiB  (" + str(ts_path) + ")")
     if onnx_path:
         print("onnx file         " + format(report["onnx_mb"], ".4f") + " MiB  (" + str(onnx_path) + ")")
-    print(
-        "latency (CPU x" + str(args.threads) + ", batch 1)  median "
-        + format(report["latency"]["median_ms"], ".3f") + " ms  p95 "
-        + format(report["latency"]["p95_ms"], ".3f") + " ms  over " + str(args.repeats) + " runs"
-    )
+    for device_name, result in latency_by_device.items():
+        thread_label = " x" + str(args.threads) if device_name == "cpu" else ""
+        print(
+            "latency (" + device_name.upper() + thread_label + ", batch 1)  median "
+            + format(result["median_ms"], ".3f") + " ms  p95 "
+            + format(result["p95_ms"], ".3f") + " ms  over " + str(args.repeats) + " runs"
+        )
+    print("selected device     " + report["latency"]["device"])
 
     robustness_path = Path(args.out_dir) / "robustness.json"
     clean_f1 = worst_f1 = None
