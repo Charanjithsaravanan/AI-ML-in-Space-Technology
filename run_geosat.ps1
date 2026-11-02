@@ -1,9 +1,16 @@
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $python = Join-Path $root ".venv\Scripts\python.exe"
+$native = Join-Path $root "dist\geosat\geosat.exe"
+
+if (Test-Path $native) {
+    Write-Host "Starting native GEOSAT application at http://127.0.0.1:8000"
+    & $native
+    exit $LASTEXITCODE
+}
 
 if (-not (Test-Path $python)) {
-    throw "Local environment not found. Run .\setup_geosat.ps1 first."
+    throw "Local environment not found. Run .\setup_geosat.ps1 first, or build the native app with .\build_geosat.ps1."
 }
 if (-not (Test-Path (Join-Path $root "runs\best.pt"))) {
     throw "Missing trained model: runs\best.pt"

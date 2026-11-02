@@ -62,7 +62,7 @@ Then run the Windows installer and launcher:
 ```
 
 The setup creates an isolated `.venv`, installs the Python/API packages, and
-runs `npm install` in `frontend/`. It does not retrain the model or download
+runs `npm ci` in `frontend/`. It does not retrain the model or download
 cloud services. The repository includes the trained checkpoint and screener.
 
 If PowerShell blocks scripts, allow locally created scripts for your user:
@@ -102,9 +102,11 @@ prerequisites above:
 ```
 
 The setup step creates `.venv`, installs the Python and API dependencies, and
-installs the frontend dependencies. The launcher starts the API on
-`http://127.0.0.1:8000`, checks `/health`, starts the dashboard on
-`http://localhost:3000`, and opens it in your browser. Upload analysis is
+installs the frontend dependencies. Without a native build, the launcher starts
+the API on `http://127.0.0.1:8000`, checks `/health`, starts the dashboard on
+`http://localhost:3000`, and opens it in your browser. After a native build,
+the launcher uses the bundled API and dashboard on `http://127.0.0.1:8000`.
+Upload analysis is
 processed locally using `runs/best.pt` and `runs/cloud_screener.joblib`; files
 are not sent to a third-party service. Press `Ctrl+C` in the launcher window to
 stop the dashboard and API.
@@ -113,6 +115,37 @@ This app is intended for local analysis and decision support. Its reliability
 metrics are documented in the dashboard, but synthetic-noise testing and a
 fixed holdout set are not sufficient evidence for safety-critical autonomous
 operation.
+
+### Native Windows executable
+
+The app can also be packaged as a native Windows executable. This avoids
+installing Python and Node.js on the machine that runs the finished app, but
+the build machine still needs Python, Node.js, and the project dependencies:
+
+```powershell
+.\setup_geosat.ps1
+.\build_geosat.ps1
+.\run_geosat.ps1
+```
+
+The result is `dist\geosat\geosat.exe` plus its runtime folder. Keep the whole
+`dist\geosat` folder together when copying or distributing it. The launcher
+uses the native executable automatically when it exists; otherwise it falls
+back to the development API and dashboard.
+
+### Linux setup and executable
+
+Build native Linux binaries on Linux (PyInstaller does not cross-compile
+Windows and Linux executables):
+
+```bash
+./setup_geosat.sh
+./build_geosat.sh
+./run_geosat.sh
+```
+
+The Linux output is `dist/geosat/geosat` plus its runtime folder. The same
+trained model and local-only API are used on both operating systems.
 
 ### Optional Docker installation
 
@@ -126,6 +159,12 @@ docker compose up --build
 Open `http://localhost:8000`. Stop it with `Ctrl+C`, or use
 `docker compose down`. Docker Desktop is free for personal use and includes
 Docker Compose; its licensing should be checked for commercial organisations.
+
+Docker is not required. It is useful here because it packages the Python
+runtime, PyTorch, API, and static dashboard into one reproducible environment,
+avoiding host-specific dependency conflicts. The native executable is more
+convenient for an end user, while Docker is usually easier for deployment and
+consistent testing.
 
 ---
 
