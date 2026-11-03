@@ -122,6 +122,8 @@ def main() -> None:
     parser.add_argument("--full", action="store_true",
                         help="train on all of EuroSAT (~27,000 patches) instead of the fixed subset")
     parser.add_argument("--data-root", type=str, default="./data")
+    parser.add_argument("--pretrained", type=str,
+                        help="optional self-supervised encoder checkpoint from pretrain.py")
     parser.add_argument("--out", type=str, default="runs/best.pt")
     args = parser.parse_args()
 
@@ -137,6 +139,14 @@ def main() -> None:
     val_loader = make_loader(splits.val, args.batch_size)
 
     model = GEOSATCNN(num_classes=len(splits.classes)).to(device)
+    if args.pretrained:
+        pretraining = torch.load(args.pretrained, map_location="cpu", weights_only=False)
+        encoder_state = {
+            key: value for key, value in pretraining["encoder"].items()
+            if key.startswith(("stem.", "features.", "pool."))
+        }
+        model.load_state_dict(encoder_state, strict=False)
+        print("initialized encoder from " + args.pretrained)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=args.epochs, eta_min=args.lr * 0.01

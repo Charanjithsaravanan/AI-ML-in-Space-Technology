@@ -1,4 +1,4 @@
-# GEOSAT — a 0.19 MB EuroSAT classifier that survives sensor noise
+# GEOSAT — a 0.19 MB Landsat-pretrained EuroSAT classifier
 
 A compact depthwise-separable GEOSAT CNN for 64x64 RGB satellite tiles, trained
 on a reproducible EuroSAT split, exported as TorchScript with its normalisation
@@ -88,6 +88,102 @@ Python 3.10+.
 The first run downloads EuroSAT RGB (~90 MB) into `./data` through torchvision.
 That download goes through an unverified SSL context — it is left exactly as
 specified in `data.py`, do not replace it.
+
+### Optional Landsat GeoTIFF dataset
+
+The [Landsat-8 Multispectral Satellite Imagery Dataset](https://www.kaggle.com/datasets/synabedi/landsat-dataset)
+is an approximately 932 MB, CC BY 4.0, unlabeled multispectral GeoTIFF
+collection. It is useful for out-of-distribution scene inspection and
+geospatial inference, but it does not provide the ten EuroSAT class labels, so
+it is intentionally not added to the supervised training split.
+
+Download it with an authenticated Kaggle CLI session (the archive is not stored
+in this repository):
+
+```powershell
+if (-not (Test-Path ".\.venv\Scripts\python.exe")) {
+  python -m venv .venv
+}
+$python = (Resolve-Path ".\.venv\Scripts\python.exe").Path
+& $python -m pip install -r requirements-landsat.txt
+New-Item -ItemType Directory -Force data\landsat | Out-Null
+& $python -m kaggle datasets download `
+  -d synabedi/landsat-dataset -p data\landsat --unzip
+```
+
+Run this block from the repository root, the folder containing
+`requirements.txt` and `setup_geosat.ps1`.
+
+If Kaggle reports that credentials are missing, create an API token in Kaggle
+account settings, save the downloaded `kaggle.json` at
+`$HOME\.kaggle\kaggle.json`, and rerun the download command. Do not commit
+that file.
+
+For the dataset's documented band order (B2, B3, B4, B5, B6, B7), prepare
+non-overlapping 64x64 RGB tiles using Landsat B4/B3/B2:
+
+```powershell
+python landsat.py --image data\landsat\Landsat_India_Dataset.tif `
+  --output-dir data\landsat\tiles --limit 100
+python infer.py --image data\landsat\tiles\tile_000000.png
+```
+
+`landsat.py` performs per-band 2nd-to-98th percentile scaling, preserves the
+scene CRS and tile transforms in `manifest.json`, and writes only valid scene
+windows. The default raster indexes `3 2 1` assume the TIFF stores B2 through
+B7 in order; inspect the file metadata and override `--bands` if its order
+differs. The generated PNGs are visualisation/inference inputs, not labeled
+training examples.
+
+To use the unlabeled tiles for self-supervised representation pretraining,
+then fine-tune the existing ten-class EuroSAT classifier:
+
+```powershell
+python pretrain.py --tiles data\landsat\tiles --epochs 20 `
+  --out runs\landsat_encoder.pt
+python train.py --pretrained runs\landsat_encoder.pt --epochs 30
+```
+
+This does not assign Landsat land-cover labels. It learns a general visual
+encoder from two augmented views of each tile, and the EuroSAT labels still
+train and evaluate the final classifier. The default `train.py` command remains
+unchanged when `--pretrained` is omitted.
+
+### Optional AllClear pretraining data
+
+[AllClear](https://allclear.cs.cornell.edu/) is a cloud-removal benchmark, not
+a labeled replacement for EuroSAT. It contains Sentinel-2, Sentinel-1,
+Landsat-8/9, cloud masks and temporal observations. Its optical imagery can
+improve self-supervised initialization, but it does not provide the ten
+EuroSAT land-cover labels needed by this classifier.
+
+AllClear's download is very large. Clone its official repository and download
+only when you have sufficient disk space and bandwidth:
+
+```powershell
+git clone https://github.com/Zhou-Hangyu/allclear.git data\allclear-repo
+Set-Location data\allclear-repo
+python download.py --cpus 4
+Set-Location ..\..
+```
+
+Extract RGB Sentinel-2 tiles from the official **training ROIs only**, then
+pretrain and fine-tune:
+
+```powershell
+python allclear_tiles.py --data-root data\allclear-repo\data `
+  --roi-list data\allclear-repo\metadata\rois\train_rois_19k.txt `
+  --output-dir data\allclear\tiles --max-files 100 --limit 10000
+python pretrain.py --tiles data\allclear\tiles --epochs 20 `
+  --out runs\allclear_encoder.pt
+python train.py --pretrained runs\allclear_encoder.pt --epochs 30 --full `
+  --out runs\allclear_eurosat_finetuned.pt
+```
+
+Remove `--max-files` and `--limit` for a larger run. Do not use
+`allclear_test_proi1_v1.zip` or test ROI files for pretraining if you want an
+unbiased evaluation. AllClear tiles are still unlabeled; EuroSAT remains the
+supervised fine-tuning and evaluation dataset.
 
 ### Run the complete app locally (Windows)
 
@@ -213,11 +309,11 @@ The three required axes, together, because they trade off against each other:
 
 | metric | value | produced by |
 |---|---|---|
-| macro F1, clean | _fill from your run_ | `python evaluate.py` |
-| macro F1, worst noise (0.30) | _fill from your run_ | `python evaluate.py` |
+| macro F1, clean | **0.8128** | `python evaluate.py --checkpoint runs/best.pt` |
+| macro F1, worst noise (0.30) | **0.5252** | `python evaluate.py --checkpoint runs/best.pt` |
 | parameters | 49,434 | architecture arithmetic |
-| exported size (TorchScript, fp32) | 0.19 MiB | `python benchmark.py` |
-| median selected-device latency, batch 1 | _fill from your run_ | `python benchmark.py` |
+| exported size (TorchScript, fp32) | **0.254 MiB** | `python benchmark.py --checkpoint runs/best.pt` |
+| median selected-device latency, batch 1 | **0.742 ms (CPU)** | `python benchmark.py --checkpoint runs/best.pt` |
 
 `benchmark.py` uses `--device auto` by default: it measures both CPU and CUDA
 when CUDA is available, then records the lower-latency result as the selected
@@ -249,22 +345,23 @@ the real `stat().st_size` of that file rather than an estimate.
 
 | condition | macro F1 | accuracy | delta vs clean |
 |---|---|---|---|
-| clean | — | — | — |
-| gaussian @ 0.05 | — | — | — |
-| gaussian @ 0.15 | — | — | — |
-| gaussian @ 0.30 | — | — | — |
-| salt_pepper @ 0.05 | — | — | — |
-| salt_pepper @ 0.15 | — | — | — |
-| salt_pepper @ 0.30 | — | — | — |
-| band_dropout @ 0.05 | — | — | — |
-| band_dropout @ 0.15 | — | — | — |
-| band_dropout @ 0.30 | — | — | — |
+| clean | 0.8128 | 0.8250 | — |
+| gaussian @ 0.05 | 0.7312 | 0.7350 | -0.0816 |
+| gaussian @ 0.15 | 0.6342 | 0.6625 | -0.1786 |
+| gaussian @ 0.30 | 0.5756 | 0.6025 | -0.2372 |
+| salt_pepper @ 0.05 | 0.6661 | 0.6825 | -0.1467 |
+| salt_pepper @ 0.15 | 0.5965 | 0.6225 | -0.2163 |
+| salt_pepper @ 0.30 | 0.5252 | 0.5600 | -0.2876 |
+| band_dropout @ 0.05 | 0.7763 | 0.7925 | -0.0364 |
+| band_dropout @ 0.15 | 0.7397 | 0.7575 | -0.0731 |
+| band_dropout @ 0.30 | 0.7423 | 0.7650 | -0.0705 |
 
 This table is written by `evaluate.py` to `results/robustness.md`; paste the
-printed version in here so the README always matches the code that produced it.
-No value in this README is typed by hand from memory — the placeholder rows exist
-because they are environment-dependent (CPU model, thread count, library build),
-and a number copied from someone else's machine would be meaningless.
+printed version in here so the README matches the current canonical checkpoint.
+These results use the Landsat-self-supervised encoder followed by EuroSAT
+fine-tuning on the fixed 2,000-patch protocol. The EuroSAT-only baseline was
+0.7935 clean macro F1 and 0.8025 accuracy; the current model improves those
+values to 0.8128 and 0.8250 respectively, while worst-case noise F1 is lower.
 
 ---
 

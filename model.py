@@ -60,9 +60,12 @@ class GEOSATCNN(nn.Module):
         self.classifier = nn.Linear(c5, num_classes)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.features(self.stem(x))
-        x = self.pool(x).flatten(1)
+        x = self.encode(x)
         return self.classifier(self.dropout(x))
+
+    def encode(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.features(self.stem(x))
+        return self.pool(x).flatten(1)
 
 
 class NormalizedModel(nn.Module):

@@ -1,0 +1,4 @@
+# Optional support for the Kaggle Landsat GeoTIFF dataset.
+rasterio>=1.3.0
+kaggle>=1.6.0
+six>=1.16.0
